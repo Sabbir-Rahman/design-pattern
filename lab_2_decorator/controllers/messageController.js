@@ -4,9 +4,10 @@ const saltRounds = 10;
 const alert = require("alert");
 var LocalStorage = require("node-localstorage").LocalStorage;
 const { request } = require("express");
-localStorage = new LocalStorage("./scratch");
 let express = require("express");
 let cookieParser = require("cookie-parser");
+
+const zlib = require('zlib')
 //setup express app
 const app = express();
 app.use(cookieParser());
@@ -28,16 +29,21 @@ const decodePage = (req, res) => {
 const encodeMessage = async (req, res) => {
   const {name,message} = req.body
 
+  //encrypted message has two parts iv and content. iv is a random number can be use as a private key
   encryptMessage = encrypt(message)
 
+  //compress the encrypted message content
+  var deflated = zlib.deflateSync(encryptMessage.content).toString("base64");
   
-  const newMessage = { name: name, message:encryptMessage.toString()};
+
+  const newMessage = { name: name, message:deflated};
 
   try {
-    //await new messageSchema(newMessage).save();
+    const dbMessage = await new messageSchema(newMessage).save();
     
+   
     alert(
-      `Copy encrypted message iv and content and paste in the box\niv: \n${encryptMessage.iv}\ncontent:\n${encryptMessage.content}`
+      `Copy message id and iv and paste in the box\nmessage id:- ${dbMessage.id}\niv:- ${encryptMessage.iv}`
     );
 
     res.redirect("/decode");
@@ -50,26 +56,28 @@ const encodeMessage = async (req, res) => {
 
 const decodeMessage = async (req, res) => {
   //const { name, message } = req.body;
+  
 
-  const decodeMessage = decrypt(req.body)
+  const result = await messageSchema.findById(req.body.id)
+
+  //extract the encrypted content req.body.iv is the random number can be use as private key 
+  var inflatedContent = zlib
+    .inflateSync(new Buffer.from(result.message, "base64"))
+    .toString();
+
+  //ready object for decrypt
+  const decodeMessageObj = {
+      'iv': req.body.iv,
+      'content': inflatedContent
+  }
+
+
+  const decodeMessage = decrypt(decodeMessageObj)
+  
 
   alert(`Decoded message is:-\n\n${decodeMessage}`)
 
-//   encryptMessage = encrypt(message);
 
-//   const newMessage = { name: name, message: encryptMessage.toString() };
-
-//   try {
-//     await new messageSchema(newMessage).save();
-
-//     alert(
-//       `Copy encrypted message iv and content and paste in the box\niv: \n${encryptMessage.iv}\ncontent:\n${encryptMessage.content}`
-//     );
-
-//     //res.status(201).json({message:'New user created', data:newUser}).redirect('/')
-//   } catch (error) {
-//     res.status(409).json({ message: error.message });
-//   }
 };
 
 module.exports = {encodePage,decodePage,encodeMessage,decodeMessage}
